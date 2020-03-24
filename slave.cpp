@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -8,8 +9,13 @@
 #include <thread>
 #include <vector>
 
+#include "radiotap_iter.h"
+
 // Uncomment if unneeded
-#define VERBOSE
+#define PCAP_FILE_HEADER_PRINT
+#define PCAP_PACKET_HEADER_PRINT
+//#define RADIOTAP_HEADER_PRINT
+#define WIFI_HEADER_PRINT
 
 struct pcap_file_header
 {
@@ -57,7 +63,6 @@ struct wifi_packet
     std::uint32_t fcs;
     */
 };
-
 void pcap_parse_loop(std::string filename)
 {
     pcap_file_header pcap_header;
@@ -72,8 +77,8 @@ void pcap_parse_loop(std::string filename)
     pcap_input.read(reinterpret_cast<char*>(&pcap_header.snapshot_length), sizeof pcap_header.snapshot_length);
     pcap_input.read(reinterpret_cast<char*>(&pcap_header.linklayer_header_type), sizeof pcap_header.linklayer_header_type);
 
-#ifdef VERBOSE
-    std::cout << "pcap file header:\nMagic number: 0x" << std::setfill('0') << std::setw(8) << std::hex << pcap_header.pcap_magic << std::endl;
+#ifdef PCAP_FILE_HEADER_PRINT
+    std::cout << "-- pcap file header --\nMagic number: 0x" << std::setfill('0') << std::setw(8) << std::hex << pcap_header.pcap_magic << std::endl;
     std::cout << std::dec;
     std::cout << "Major ver: " << pcap_header.pcap_major_ver << std::endl;
     std::cout << "Minor ver: " << pcap_header.pcap_minor_ver << std::endl;
@@ -90,7 +95,6 @@ void pcap_parse_loop(std::string filename)
             while (pcap_input.peek() != EOF)
             {
                 pcap_packet_header packet_header;
-                wifi_packet packet;
 
                 pcap_input.read(reinterpret_cast<char*>(&packet_header.sec), sizeof packet_header.sec);
                 pcap_input.read(reinterpret_cast<char*>(&packet_header.msec), sizeof packet_header.msec);
@@ -101,18 +105,48 @@ void pcap_parse_loop(std::string filename)
                 packet_data.resize(packet_header.len);
                 pcap_input.read(reinterpret_cast<char*>(packet_data.data()), packet_header.len);
 
-                packet.frame_control = (packet_data[0]<<8)+packet_data[1];
-                packet.duration = (packet_data[2]<<8)+packet_data[3];
-                std::copy(packet_data.begin()+4, packet_data.begin()+10, packet.addr1.begin());
-                std::copy(packet_data.begin()+10, packet_data.begin()+16, packet.addr2.begin());
-
-#ifdef VERBOSE
+#ifdef PCAP_PACKET_HEADER_PRINT
                 std::cout << std::dec;
                 std::cout << "-- pcap packet_header --\nsec: " << packet_header.sec << std::endl;
                 std::cout << "msec: " << packet_header.msec << std::endl;
                 std::cout << "Data length: " << packet_header.len << std::endl;
                 std::cout << "Data length (if untruncted): " << packet_header.len_untrunc << std::endl;
+#endif
 
+                struct ieee80211_radiotap_header rt_header;
+                //struct ieee80211_radiotap_vendor_namespaces rt_vns;
+
+                rt_header.it_version = packet_data[0];
+                rt_header.it_pad = packet_data[1];
+                rt_header.it_len = (packet_data[3]<<8) + packet_data[2];
+                rt_header.it_present = (packet_data[7]<<24) + (packet_data[6]<<16) + (packet_data[5]<<8) + packet_data[4];
+
+#ifdef RADIOTAP_HEADER_PRINT
+                std::cout << " -- Radiotap header --\nVersion: " << std::to_string(rt_header.it_version) << std::endl;
+                std::cout << "Pad: " << std::to_string(rt_header.it_pad) << std::endl;
+                std::cout << "Length: " << std::to_string(rt_header.it_len) << std::endl;
+                std::cout << "Present: " << std::bitset<32>(rt_header.it_present) << " | 0x" << std::hex << rt_header.it_present << std::endl;
+#endif
+
+/*
+                struct ieee80211_radiotap_iterator rt_iterator;
+                if (!ieee80211_radiotap_iterator_init(&rt_iterator, reinterpret_cast<ieee80211_radiotap_header*>(packet_data.data()), 9999, &vns))
+                {
+                    std::cout << "Radiotap iterator init failed!" << std::endl;
+                    exit(2);
+                }
+*/
+
+                wifi_packet packet;
+                
+                auto wifi_data = packet_data.begin()+rt_header.it_len;
+
+                packet.frame_control = (wifi_data[0]<<8)+wifi_data[1];
+                packet.duration = (wifi_data[2]<<8)+wifi_data[3];
+                std::copy(wifi_data+4, wifi_data+10, packet.addr1.begin());
+                std::copy(wifi_data+10, wifi_data+16, packet.addr2.begin());
+
+#ifdef WIFI_HEADER_PRINT
                 std::cout << "-- WiFi header --\nFrame control: " << packet.frame_control << std::endl;
                 std::cout << "Duration: " << packet.duration << std::endl;
                 std::cout << "Address 1 (receiver): " << packet.addr1 << std::endl;
