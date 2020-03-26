@@ -157,7 +157,7 @@ void pcap_parse_loop(std::string filename)
         }
 
         default:
-            std::cout << "Unhandled packet type from file " << filename << std::endl;
+            std::cout << "Unhandled packet type " << pcap_header.linklayer_header_type << " from file " << filename << std::endl;
             exit(1);
             break;
     }
@@ -167,7 +167,11 @@ int main(int argc, char** argv)
 {
     (void)argc;
     (void)argv;
-    pcap_parse_loop("/dev/stdin"); 
+
+    std::thread wifi_thread;
+    std::thread bluetooth_thread;
+
+    pcap_parse_loop("wifi_pcap_pipe"); 
 
    return 0;
 }
