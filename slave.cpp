@@ -9,6 +9,11 @@
 #include <thread>
 #include <vector>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+//#include <netinet/in.h>
+#include <netdb.h>
+
 #include "radiotap_iter.h"
 
 // Uncomment if unneeded
@@ -44,6 +49,7 @@ struct mac_address
 
 std::ostream& operator<<(std::ostream& os, const mac_address &mac)
 {
+    // Please do not judge me for this line
     return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]);
 }
 
@@ -63,8 +69,42 @@ struct wifi_packet
     std::uint32_t fcs;
     */
 };
+
 void pcap_parse_loop(std::string filename)
 {
+    // Connect to master
+    std::cout << "Connecting to master ..." << std::endl;
+
+    struct addrinfo hints = {};
+    struct addrinfo *res;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    getaddrinfo("192.168.10.3", "4443", &hints, &res);
+
+    int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd < 0)
+    {
+        std::cout << "Failed to open socket!" << std::endl;
+        exit(1);
+    }
+
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
+    {
+        std::cout << "Failed to connect!" << std::endl;
+        exit(2);
+    }
+
+    std::cout << "Connected to master" << std::endl;
+
+    std::uint8_t slave_number = 1;
+
+    if (send(sockfd, &slave_number, 1, 0) != 1)
+    {
+        std::cout << "Failed to send slave number" << std::endl;
+        exit(3);
+    }
+
     pcap_file_header pcap_header;
 
     std::ifstream pcap_input(filename, std::ios::binary);
@@ -152,6 +192,9 @@ void pcap_parse_loop(std::string filename)
                 std::cout << "Address 1 (receiver): " << packet.addr1 << std::endl;
                 std::cout << "Address 2 (transmitter): " << packet.addr2 << std::endl;
 #endif
+
+                
+
             }
             break;
         }
@@ -169,9 +212,8 @@ int main(int argc, char** argv)
     (void)argv;
 
     std::thread wifi_thread;
-    std::thread bluetooth_thread;
 
     pcap_parse_loop("wifi_pcap_pipe"); 
 
-   return 0;
+    return 0;
 }
