@@ -11,10 +11,12 @@ Passive monitoring for RPi
 
 ### On sniffer1 (192.168.10.3):
 ```
+./init.sh
 ./start_slave.sh 2
 ```
 
 ### On sniffer2 (192.168.10.4):
 ```
+./init.sh
 ./start_slave.sh 3
 ```
