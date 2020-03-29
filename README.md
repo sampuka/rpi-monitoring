@@ -1,4 +1,13 @@
 # rpi-monitoring
 Passive monitoring for RPi
 
-Use ./start_slave.sh and ./start_master.sh for starting slave and master
+Startup:
+On sniffer0 (192.168.10.2):
+./start_master.sh &
+./start_slave.sh 1
+
+On sniffer1 (192.168.10.3):
+./start_slave.sh 2
+
+On sniffer2 (192.168.10.4):
+./start_slave.sh 3
