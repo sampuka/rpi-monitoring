@@ -11,14 +11,13 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
-//#include <netinet/in.h>
 #include <netdb.h>
 
 #include "radiotap_iter.h"
 
 // Uncomment if unneeded
-#define PCAP_FILE_HEADER_PRINT
-#define PCAP_PACKET_HEADER_PRINT
+//#define PCAP_FILE_HEADER_PRINT
+//#define PCAP_PACKET_HEADER_PRINT
 //#define RADIOTAP_HEADER_PRINT
 #define WIFI_HEADER_PRINT
 
@@ -193,7 +192,28 @@ void pcap_parse_loop(std::string filename)
                 std::cout << "Address 2 (transmitter): " << packet.addr2 << std::endl;
 #endif
 
-                
+                char msg_data[16] = {'\0'};                
+                msg_data[0] = 1; // Frame code
+                for (std::uint8_t i = 0; i < 6; i++)
+                    msg_data[1+i] = packet.addr2.addr[i];
+                for (std::uint8_t i = 0; i < 4; i++)
+                    msg_data[7+i] = packet_header.sec & (0xff<<(3-i));
+                for (std::uint8_t i = 0; i < 4; i++)
+                    msg_data[11+i] = packet_header.msec & (0xff<<(3-i));
+                msg_data[15] = packet_data[22]; // Magic number for now
+
+                int bytes_sent = send(sockfd, msg_data, 16, 0);
+
+                if (bytes_sent == 0)
+                {
+                    std::cout << "Connection closed!" << std::endl;
+                    exit(0);
+                }
+
+                if (bytes_sent != 16)
+                {
+                    std::cout << "Failed to send packet!" << std::endl;
+                }
 
             }
             break;

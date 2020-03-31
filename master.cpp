@@ -1,13 +1,14 @@
+#include <chrono>
 #include <cstdint>
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <unordered_map>
+#include <set>
+#include <thread>
 #include <vector>
 
 #include <sys/types.h>
 #include <sys/socket.h>
-//#include <netinet/in.h>
 #include <netdb.h>
 
 #define BUFFER_SIZE 100
@@ -22,7 +23,13 @@ struct slave
 struct mac_address
 {
     std::array<std::uint8_t, 6> addr;
-    std::uint64_t key()
+
+    bool operator<(const struct mac_address &mac) const
+    {
+        return key() < mac.key();
+    }
+
+    std::uint64_t key() const
     {
         std::uint64_t key = 0;
         for (std::uint8_t i = 0; i < 6; i++)
@@ -52,7 +59,38 @@ struct device
     struct vec pos;
     std::array<double, SLAVE_COUNT> sig_str;
     // Timestamp?
+
+    bool operator==(const struct device &dev)
+    {
+        return mac.key() == dev.mac.key();
+    }
 };
+
+std::set<struct device> devices;
+
+void slave_listen(const struct slave &slv)
+{
+    while (true)
+    {
+        char buffer[BUFFER_SIZE];
+
+        int bytes_recv = recv(slv.sockfd, buffer, 16, 0);
+
+        if (bytes_recv == 0)
+        {
+            std::cout << "Connection closed to slave " << static_cast<unsigned short>(slv.slave_number) << "!" << std::endl;
+            exit(0);
+        }
+
+        if (bytes_recv != 16 || buffer[0] != 1)
+        {
+            std::cout << "Wrong message recv! byte count = " << bytes_recv << " first bit = "  << static_cast<unsigned short>(buffer[0]) << std::endl;
+            continue;
+        }
+
+        std::cout << "Recived update with signal strength " << std::to_string(*reinterpret_cast<signed char*>(&buffer[15])) << std::endl; 
+    }
+}
 
 int main(int argc, char** argv)
 {
@@ -90,8 +128,7 @@ int main(int argc, char** argv)
     std::cout << "Server listening on port " << port << std::endl;
 
     // Connect to slaves
-    std::vector<slave> slaves;
-    slaves.resize(SLAVE_COUNT);
+    std::array<slave, SLAVE_COUNT> slaves;
 
     for (std::uint8_t i = 0; i < SLAVE_COUNT; i++) 
     {
@@ -122,9 +159,36 @@ int main(int argc, char** argv)
         slaves[i].slave_number = slave_number;
     }
 
-    std::unordered_map<std::uint64_t, struct device> devices;
+    std::array<std::thread, SLAVE_COUNT> threads;
 
-    devices[1] = {};
+    for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
+    {
+        threads[i] = std::thread(slave_listen, slaves[i]);
+    }
+
+    while (true)
+    {
+        std::uint8_t i = 5;
+        for (const struct device &dev : devices)
+        {
+            double avg_str = 0;
+            for (double str : dev.sig_str)
+                avg_str += str;
+            avg_str /= dev.sig_str.size();
+
+            if (avg_str > 20)
+            {
+                std::cout << dev.mac << ' ' << avg_str << std::endl;
+
+                i--;
+
+                if (i == 0)
+                    break;
+            } 
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    }
 
     return 0;
 }
