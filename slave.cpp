@@ -69,40 +69,10 @@ struct wifi_packet
     */
 };
 
+int sockfd;
+
 void pcap_parse_loop(std::string filename)
 {
-    // Connect to master
-    std::cout << "Connecting to master ..." << std::endl;
-
-    struct addrinfo hints = {};
-    struct addrinfo *res;
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-
-    getaddrinfo("192.168.10.3", "4443", &hints, &res);
-
-    int sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sockfd < 0)
-    {
-        std::cout << "Failed to open socket!" << std::endl;
-        exit(1);
-    }
-
-    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
-    {
-        std::cout << "Failed to connect!" << std::endl;
-        exit(2);
-    }
-
-    std::cout << "Connected to master" << std::endl;
-
-    std::uint8_t slave_number = 1;
-
-    if (send(sockfd, &slave_number, 1, 0) != 1)
-    {
-        std::cout << "Failed to send slave number" << std::endl;
-        exit(3);
-    }
 
     pcap_file_header pcap_header;
 
@@ -228,8 +198,45 @@ void pcap_parse_loop(std::string filename)
 
 int main(int argc, char** argv)
 {
-    (void)argc;
-    (void)argv;
+    if (argc != 2)
+    {
+        std::cout << "Usage: " << argv[0] << "<slave number>" << std::endl;
+        exit(1);
+    }
+
+    // Connect to master
+    std::cout << "Connecting to master ..." << std::endl;
+
+    struct addrinfo hints = {};
+    struct addrinfo *res;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    getaddrinfo("192.168.10.3", "4443", &hints, &res);
+
+    sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sockfd < 0)
+    {
+        std::cout << "Failed to open socket!" << std::endl;
+        exit(1);
+    }
+
+    if (connect(sockfd, res->ai_addr, res->ai_addrlen) < 0)
+    {
+        std::cout << "Failed to connect!" << std::endl;
+        exit(2);
+    }
+
+    std::cout << "Connected to master" << std::endl;
+
+    //std::uint8_t slave_number = argv[1][0]-'0';
+    std::uint8_t slave_number = 0;
+
+    if (send(sockfd, &slave_number, 1, 0) != 1)
+    {
+        std::cout << "Failed to send slave number" << std::endl;
+        exit(3);
+    }
 
     std::thread wifi_thread;
 

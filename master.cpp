@@ -1,9 +1,11 @@
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <iostream>
 #include <iomanip>
-#include <string>
+#include <map>
 #include <set>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -58,15 +60,31 @@ struct device
     struct mac_address mac;
     struct vec pos;
     std::array<double, SLAVE_COUNT> sig_str;
+    double avg_str = -100000000;
     // Timestamp?
 
-    bool operator==(const struct device &dev)
+    bool operator==(const struct device &dev) const
     {
         return mac.key() == dev.mac.key();
     }
+
+    bool operator<(const struct device &dev) const
+    {
+        return avg_str < dev.avg_str;
+    }
 };
 
-std::set<struct device> devices;
+const auto& map_comp = [](std::pair<struct mac_address, struct device> elem1, std::pair<struct mac_address, struct device> elem2)
+{
+    return elem1.second.avg_str > elem2.second.avg_str;
+};
+
+const auto& set_comp = [](const struct device elem1, const struct device elem2)
+{
+    return elem1.avg_str > elem2.avg_str;
+};
+
+std::map<struct mac_address, struct device> devices;
 
 void slave_listen(const struct slave &slv)
 {
@@ -88,7 +106,33 @@ void slave_listen(const struct slave &slv)
             continue;
         }
 
-        std::cout << "Recived update with signal strength " << std::to_string(*reinterpret_cast<signed char*>(&buffer[15])) << std::endl; 
+        //std::cout << "Recived update with signal strength " << std::to_string(*reinterpret_cast<signed char*>(&buffer[15])) << std::endl; 
+
+        struct device dev = {};
+
+        for (std::uint8_t i = 0; i < 6; i++)
+        {
+            dev.mac.addr[i] = buffer[1+i];
+        }
+
+        //std::cout << "Received update on device " << new_dev.mac << " " << std::hex << new_dev.mac.key() << std::dec << std::endl;
+
+        if (devices.count(dev.mac) == 1)
+        {
+            dev = devices.at(dev.mac);
+        }
+
+        dev.sig_str[slv.slave_number] = *reinterpret_cast<int8_t*>(&buffer[15]);
+        dev.avg_str = 0;
+        for (double str : dev.sig_str)
+        {
+            dev.avg_str += str;
+        }
+        dev.avg_str /= dev.sig_str.size();
+
+        //std::cout << "Received update on device " << dev.mac << " " << std::hex << dev.mac.key() << std::dec << std::endl;
+
+        devices[dev.mac] = dev;
     }
 }
 
@@ -168,17 +212,16 @@ int main(int argc, char** argv)
 
     while (true)
     {
-        std::uint8_t i = 5;
-        for (const struct device &dev : devices)
-        {
-            double avg_str = 0;
-            for (double str : dev.sig_str)
-                avg_str += str;
-            avg_str /= dev.sig_str.size();
+        std::cout << "Device count = " << std::dec << devices.size() << std::endl;
+        std::uint8_t i = 20;
 
-            if (avg_str > 20)
+        std::set<std::pair<struct mac_address, struct device>, decltype(map_comp)> devices_sorted(devices.begin(), devices.end(), map_comp);
+
+        for (const auto& dev : devices_sorted)
+        {
+            if (dev.second.avg_str > -100 || true)
             {
-                std::cout << dev.mac << ' ' << avg_str << std::endl;
+                std::cout << dev.second.mac << ' ' << dev.second.avg_str << std::endl;
 
                 i--;
 
