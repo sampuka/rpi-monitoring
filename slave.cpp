@@ -200,7 +200,7 @@ int main(int argc, char** argv)
 {
     if (argc != 2)
     {
-        std::cout << "Usage: " << argv[0] << "<slave number>" << std::endl;
+        std::cout << "Usage: " << argv[0] << " <slave number>" << std::endl;
         exit(1);
     }
 
@@ -229,8 +229,7 @@ int main(int argc, char** argv)
 
     std::cout << "Connected to master" << std::endl;
 
-    //std::uint8_t slave_number = argv[1][0]-'0';
-    std::uint8_t slave_number = 0;
+    std::uint8_t slave_number = argv[1][0]-'0';
 
     if (send(sockfd, &slave_number, 1, 0) != 1)
     {

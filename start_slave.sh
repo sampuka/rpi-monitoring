@@ -17,6 +17,6 @@ WF_PID=$!
 trap 'kill $WF_PID ; exit' INT
 
 # Start slave program
-./slave "&1"
+./slave $1
 
 kill -9 $WF_PID
