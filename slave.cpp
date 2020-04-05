@@ -17,7 +17,7 @@
 
 // Uncomment if unneeded
 //#define PCAP_FILE_HEADER_PRINT
-//#define PCAP_PACKET_HEADER_PRINT
+#define PCAP_PACKET_HEADER_PRINT
 //#define RADIOTAP_HEADER_PRINT
 #define WIFI_HEADER_PRINT
 
@@ -49,7 +49,7 @@ struct mac_address
 std::ostream& operator<<(std::ostream& os, const mac_address &mac)
 {
     // Please do not judge me for this line
-    return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]);
+    return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]) << std::dec;
 }
 
 struct wifi_packet
@@ -167,10 +167,10 @@ void pcap_parse_loop(std::string filename)
                 for (std::uint8_t i = 0; i < 6; i++)
                     msg_data[1+i] = packet.addr2.addr[i];
                 for (std::uint8_t i = 0; i < 4; i++)
-                    msg_data[7+i] = packet_header.sec & (0xff<<(3-i));
+                    msg_data[7+i] = *(reinterpret_cast<std::uint8_t*>(&packet_header.sec)+(3-i));
                 for (std::uint8_t i = 0; i < 4; i++)
-                    msg_data[11+i] = packet_header.msec & (0xff<<(3-i));
-                msg_data[15] = packet_data[22]; // Magic number for now
+                    msg_data[11+i] = *(reinterpret_cast<std::uint8_t*>(&packet_header.msec)+(3-i));
+                msg_data[15] = packet_data[22];
 
                 int bytes_sent = send(sockfd, msg_data, 16, 0);
 

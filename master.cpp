@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <functional>
 #include <iostream>
 #include <iomanip>
@@ -46,7 +47,7 @@ struct mac_address
 std::ostream& operator<<(std::ostream& os, const mac_address &mac)
 {
     // Please do not judge me for this line
-    return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]);
+    return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]) << std::dec;
 }
 
 struct vec
@@ -59,10 +60,13 @@ struct device
 {
     struct mac_address mac;
     struct vec pos;
-    std::array<double, SLAVE_COUNT> sig_str;
-    double avg_str = -100000000;
-    // Timestamp?
 
+    std::array<double, SLAVE_COUNT> sig_str;
+    double avg_str;
+
+    std::array<std::time_t, SLAVE_COUNT> ts; 
+    std::time_t oldest_ts;
+/*
     bool operator==(const struct device &dev) const
     {
         return mac.key() == dev.mac.key();
@@ -72,6 +76,7 @@ struct device
     {
         return avg_str < dev.avg_str;
     }
+*/
 };
 
 const auto& map_comp = [](std::pair<struct mac_address, struct device> elem1, std::pair<struct mac_address, struct device> elem2)
@@ -129,6 +134,23 @@ void slave_listen(const struct slave &slv)
             dev.avg_str += str;
         }
         dev.avg_str /= dev.sig_str.size();
+
+        dev.ts[slv.slave_number] = 0;
+        for (std::uint8_t i = 0; i < 4; i++)
+        {
+            dev.ts[slv.slave_number] <<= 8;
+            dev.ts[slv.slave_number] += buffer[7+i];
+        }
+
+        dev.oldest_ts = dev.ts[0];
+
+        for (std::uint8_t i = 1; i < dev.ts.size(); i++)
+        {
+            if (dev.ts[i] < dev.oldest_ts)
+            {
+                dev.oldest_ts = dev.ts[i];
+            }
+        }
 
         //std::cout << "Received update on device " << dev.mac << " " << std::hex << dev.mac.key() << std::dec << std::endl;
 
@@ -212,23 +234,37 @@ int main(int argc, char** argv)
 
     while (true)
     {
-        std::cout << "Device count = " << std::dec << devices.size() << std::endl;
-        std::uint8_t i = 20;
+        std::time_t now = std::time(0);
 
-        std::set<std::pair<struct mac_address, struct device>, decltype(map_comp)> devices_sorted(devices.begin(), devices.end(), map_comp);
+        //std::set<std::pair<struct mac_address, struct device>, decltype(map_comp)> devices_sorted(devices.begin(), devices.end(), map_comp);
+        std::vector<std::pair<struct mac_address, struct device>> devices_sorted(devices.begin(), devices.end());
+        std::sort(devices_sorted.begin(), devices_sorted.end(), map_comp);
 
+        std::stringstream s;
+
+        std::uint8_t i = 10;
+        std::uint16_t j = 0;
         for (const auto& dev : devices_sorted)
         {
-            if (dev.second.avg_str > -100 || true)
+            if ((dev.second.avg_str > -85) && (now-dev.second.oldest_ts < 10))
             {
-                std::cout << dev.second.mac << ' ' << dev.second.avg_str << std::endl;
+                j++;
+                if (i != 0)
+                {
+                    s << dev.second.mac;
+                    for (std::uint8_t i = 0; i < dev.second.sig_str.size(); i++)
+                    {
+                        s << ' ' << dev.second.sig_str[i] << "mdB";
+                    }
 
-                i--;
+                    s << ' ' << now-dev.second.oldest_ts << "s\n";
 
-                if (i == 0)
-                    break;
+                    i--;
+                }
             } 
         }
+
+        std::cout << "Device count = " << devices_sorted.size() << " (" << j << ")\n" << s.str() << std::endl;
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
