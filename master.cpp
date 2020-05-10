@@ -1,5 +1,6 @@
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <ctime>
 #include <functional>
 #include <iostream>
@@ -91,13 +92,28 @@ const auto& set_comp = [](const struct device elem1, const struct device elem2)
 
 std::map<struct mac_address, struct device> devices;
 
+int recv_oh(int sockfd, char* buffer, int bytes_to_read, int flags)
+{
+    int bytes_read = 0;
+    char  temp_buffer[BUFFER_SIZE];
+
+    while (bytes_read < bytes_to_read)
+    {
+        int new_bytes = recv(sockfd, temp_buffer, bytes_to_read-bytes_read, flags);
+        std::memcpy(buffer+bytes_read, temp_buffer, new_bytes);
+        bytes_read += new_bytes;
+    }
+
+    return bytes_read;
+}
+
 void slave_listen(const struct slave &slv)
 {
     while (true)
     {
         char buffer[BUFFER_SIZE];
 
-        int bytes_recv = recv(slv.sockfd, buffer, 16, 0);
+        int bytes_recv = recv_oh(slv.sockfd, buffer, 16, 0);
 
         if (bytes_recv == 0)
         {
@@ -209,7 +225,7 @@ int main(int argc, char** argv)
         }
 
         char buffer[BUFFER_SIZE];
-        int bytes_recv = recv(cli_sockfd, &buffer, BUFFER_SIZE, 0);
+        int bytes_recv = recv_oh(cli_sockfd, buffer, 1, 0);
 
         if (bytes_recv != 1)
         {
@@ -242,11 +258,11 @@ int main(int argc, char** argv)
 
         std::stringstream s;
 
-        std::uint8_t i = 10;
+        std::uint8_t i = 20;
         std::uint16_t j = 0;
         for (const auto& dev : devices_sorted)
         {
-            if ((dev.second.avg_str > -85) && (now-dev.second.oldest_ts < 10))
+            if ((dev.second.avg_str > -85) && (now-dev.second.oldest_ts < 60))
             {
                 j++;
                 if (i != 0)
