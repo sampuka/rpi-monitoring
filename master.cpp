@@ -16,7 +16,7 @@
 #include <netdb.h>
 
 #define BUFFER_SIZE 100
-#define SLAVE_COUNT 1
+#define SLAVE_COUNT 3
 
 struct slave
 {

@@ -213,7 +213,7 @@ int main(int argc, char** argv)
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
-    getaddrinfo("192.168.10.3", "4443", &hints, &res);
+    getaddrinfo("192.168.10.2", "4443", &hints, &res);
 
     sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (sockfd < 0)
