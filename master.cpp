@@ -16,7 +16,7 @@
 #include <netdb.h>
 
 #define BUFFER_SIZE 100
-#define SLAVE_COUNT 1
+#define SLAVE_COUNT 3
 
 struct slave
 {
@@ -100,6 +100,10 @@ int recv_oh(int sockfd, char* buffer, int bytes_to_read, int flags)
     while (bytes_read < bytes_to_read)
     {
         int new_bytes = recv(sockfd, temp_buffer, bytes_to_read-bytes_read, flags);
+        if (new_bytes == 0)
+        {
+            exit(7);
+        }
         std::memcpy(buffer+bytes_read, temp_buffer, new_bytes);
         bytes_read += new_bytes;
     }
