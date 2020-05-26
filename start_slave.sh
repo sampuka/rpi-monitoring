@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Create FIFO pipes for wifi and bluetooth pcap data, if they don't exist
-if ! test wifi_pcap_pipe ; then mkfifo wifi_pcap_pipe ; fi
-#if ! test bluetooth_pcap_pipe ; then mkfifo bluetooth_pcap_pipe ; fi
+if test wifi_pcap_pipe ; then mkfifo wifi_pcap_pipe ; fi
+#if test bluetooth_pcap_pipe ; then mkfifo bluetooth_pcap_pipe ; fi
 
 # Flush pipes
 dd if=wifi_pcap_pipe iflag=nonblock of=/dev/null
