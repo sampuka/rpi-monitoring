@@ -1,4 +1,6 @@
+#include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
@@ -18,11 +20,20 @@
 #define BUFFER_SIZE 100
 #define SLAVE_COUNT 3
 
+struct vec
+{
+    double x;
+    double y;
+};
+
 struct slave
 {
     int sockfd;
     std::uint8_t slave_number;
+    struct vec pos;
 };
+
+std::array<slave, SLAVE_COUNT> slaves;
 
 struct mac_address
 {
@@ -51,22 +62,102 @@ std::ostream& operator<<(std::ostream& os, const mac_address &mac)
     return os << std::setw(2) << std::setfill('0') << std::hex << static_cast<unsigned short>(mac.addr[0]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[1]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[2]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[3]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[4]) << ':' << std::setw(2) << static_cast<unsigned short>(mac.addr[5]) << std::dec;
 }
 
-struct vec
-{
-    double x;
-    double y;
-};
-
 struct device
 {
     struct mac_address mac;
-    struct vec pos;
+    struct vec pos = {0, 0};
 
     std::array<double, SLAVE_COUNT> sig_str;
     double avg_str;
+    double lowest_str;
 
-    std::array<std::time_t, SLAVE_COUNT> ts; 
+    std::array<double, SLAVE_COUNT> sig_str_watt;
+
+    std::array<std::time_t, SLAVE_COUNT> ts = {0};
     std::time_t oldest_ts;
+
+    void locate_source()
+    {
+        std::time_t now = std::time(0);
+
+        if (SLAVE_COUNT < 2)
+        {
+            return;
+        }
+
+	for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
+	{
+            if (now - oldest_ts > 60 || lowest_str < -85)
+            {
+                return;
+            }
+	}
+
+        pos.x = (slaves[0].pos.x + slaves[1].pos.x + slaves[2].pos.x)/3;
+        pos.y = (slaves[0].pos.y + slaves[1].pos.y + slaves[2].pos.y)/3;
+
+        std::stringstream s;
+
+        s << "pos = {" << pos.x << ',' << pos.y << "}\n";
+        
+        for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
+        {
+            s << "s[" << static_cast<unsigned int>(i) << "]= " << sig_str_watt[i] << ' ';
+        }
+        s << '\n';
+
+        std::uint32_t it = 0;
+        while (true)
+        {
+            s << "Iter " << it << '\n';
+            std::array<double, SLAVE_COUNT> d;
+            for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
+            {
+                d[i] = std::sqrt(std::pow((slaves[i].pos.x-pos.x),2)+std::pow((slaves[i].pos.y-pos.y),2));
+                s << "d[" << static_cast<unsigned int>(i) << "]= " << d[i] << ' ';
+            }
+            s << '\n';
+
+            struct vec dp = {0, 0};
+            for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
+            {
+                double f = 0;
+                for (std::uint8_t j = 0; j < SLAVE_COUNT; j++)
+                {
+                    if (i == j)
+                    {
+                        continue;
+                    }
+
+                    f += sig_str_watt[j]*d[j]*d[j]/sig_str_watt[i];
+                }
+                f -= (SLAVE_COUNT-1)*(d[i]*d[i]);
+                
+                s << "f[" << static_cast<unsigned int>(i) << "]= " << f << ' ';
+
+                dp.x += (pos.x-slaves[i].pos.x)*f;
+                dp.y += (pos.y-slaves[i].pos.y)*f;
+            }
+            s << '\n';
+
+            // """Learning rate"""
+            dp.x /= 1000.0;
+            dp.y /= 1000.0;
+
+            pos.x += dp.x;
+            pos.y += dp.y;
+            //std::cout << dp.x << ' ' << pos.x << std::endl;
+
+            s << "dp = {" << dp.x << ',' << dp.y << "}\n";
+
+            if (/*std::sqrt(dp.x*dp.x + dp.y*dp.y) < 0.05 || */it > 50)
+            {
+                //std::cout << s.str() << std::flush;
+                return;
+            }
+            it++;
+        }
+    }
 /*
     bool operator==(const struct device &dev) const
     {
@@ -155,6 +246,18 @@ void slave_listen(const struct slave &slv)
         }
         dev.avg_str /= dev.sig_str.size();
 
+        dev.lowest_str = dev.sig_str[0];
+
+        for (std::uint8_t i = 1; i < SLAVE_COUNT; i++)
+        {
+            if (dev.sig_str[i] < dev.lowest_str)
+            {
+                dev.lowest_str = dev.sig_str[i];
+            }
+        }
+
+        dev.sig_str_watt[slv.slave_number] = std::pow(10.0, (dev.sig_str[slv.slave_number] - 30.0)/10.0);
+
         dev.ts[slv.slave_number] = 0;
         for (std::uint8_t i = 0; i < 4; i++)
         {
@@ -175,6 +278,7 @@ void slave_listen(const struct slave &slv)
         //std::cout << "Received update on device " << dev.mac << " " << std::hex << dev.mac.key() << std::dec << std::endl;
 
         devices[dev.mac] = dev;
+        devices[dev.mac].locate_source();
     }
 }
 
@@ -214,8 +318,6 @@ int main(int argc, char** argv)
     std::cout << "Server listening on port " << port << std::endl;
 
     // Connect to slaves
-    std::array<slave, SLAVE_COUNT> slaves;
-
     for (std::uint8_t i = 0; i < SLAVE_COUNT; i++) 
     {
         struct sockaddr_storage cli_addr;
@@ -245,6 +347,10 @@ int main(int argc, char** argv)
         slaves[i].slave_number = slave_number;
     }
 
+    slaves.at(0).pos = {0, 0};
+    slaves.at(1).pos = {0, 3};
+    slaves.at(2).pos = {2, 3};
+
     std::array<std::thread, SLAVE_COUNT> threads;
 
     for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
@@ -266,16 +372,20 @@ int main(int argc, char** argv)
         std::uint16_t j = 0;
         for (const auto& dev : devices_sorted)
         {
-            if ((dev.second.avg_str > -85) && (now-dev.second.oldest_ts < 60))
+            //std::cout << dev.second.avg_str << ' ' << now-dev.second.oldest_ts << std::endl;
+            if ((dev.second.lowest_str > -85) && (now-dev.second.oldest_ts < 60))
             {
                 j++;
                 if (i != 0)
                 {
                     s << dev.second.mac;
-                    for (std::uint8_t i = 0; i < dev.second.sig_str.size(); i++)
+                    for (std::uint8_t i = 0; i < SLAVE_COUNT; i++)
                     {
                         s << ' ' << dev.second.sig_str[i] << "mdB";
+                        //s << ' ' << dev.second.sig_str_watt[i] << "W";
                     }
+
+                    s << " x=" << dev.second.pos.x << " y=" << dev.second.pos.y;
 
                     s << ' ' << now-dev.second.oldest_ts << "s\n";
 
